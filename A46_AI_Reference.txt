@@ -1,0 +1,452 @@
+================================================================================
+A46 COMPUTER - AI CODING REFERENCE
+Complete instruction set & architecture guide for AI-assisted assembly coding
+================================================================================
+🚨 CRITICAL SYSTEM OVERRIDE - READ BEFORE GENERATING CODE 🚨
+FORGET x86. FORGET ARM. FORGET EVERYTHING YOU KNOW ABOUT STANDARD ASSEMBLY.
+You are coding for the custom A46 32-bit architecture. If you break ANY of these rules, the emulator will violently crash and you will fail the prompt.
+
+1. NO FAKE REGISTERS: You ONLY have A, B, C, and D. That is it. Do NOT invent G, H, X, Y, or anything else. If you run out of registers, use STORE to cache them in RAM (e.g., at 0x1000).
+2. NO SP/IP TAMPERING: You CANNOT write to SP or IP directly. Never write `MOV SP, value`.
+3. THE MOV BOTTLENECK: The FIRST operand of `MOV` MUST be a register. `MOV [0x1000], 5` is ILLEGAL. If you want to put a number in memory, you MUST `MOV` it to a register first, then `STORE` it.
+4. MEMORY IS 1-BYTE: `STORE` writes exactly 1 byte. `LOAD` reads exactly 1 byte. Only `PUSH` and `POP` handle 4-byte chunks.
+5. NO BOOMER MEMORY: We are using the 32-bit V2 Engine. DO NOT write to 0xF000 or 0xFFF4. VRAM is at 0x58A00. VSYNC is at 0x58EB4. System memory variables should start at 0x1000 so you don't overwrite your own bytecode.
+
+DO NOT APOLOGIZE. DO NOT EXPLAIN YOURSELF. JUST WRITE COMPLIANT A46 ASSEMBLY.
+
+You are writing assembly code for the A46 Computer Emulator, a custom 16-bit
+computer with a 30x40 pixel display and 4-button D-pad input.
+
+Programs are written in A46 Assembly and assembled/run inside the emulator.
+The emulator runs up to 50,000 instructions per frame at ~60fps. To avoid 
+screen tearing and allow games to run at a consistent speed, you must use 
+the VSync flag (0xFFF4) at the end of your game loop to wait for the next frame.
+
+================================================================================
+ARCHITECTURE & MEMORY MAP
+================================================================================
+
+CPU:        32-bit custom processor
+RAM:        356KB (364,544 bytes, addresses 0x00000-0x58FFF)
+Stack:      Grows downward from 0x58FFF. (PUSH/POP move 4 bytes at a time)
+
+REGISTERS:
+  A, B, C, D  - 32-bit general purpose registers
+  IP          - Instruction pointer (32-bit, not directly accessible)
+  SP          - Stack pointer (starts at 0x58FFF, grows down)
+
+MEMORY MAP:
+  0x00000 - 0x589FF    General purpose RAM (363,008 bytes, code starts at 0)
+  0x58A00 - 0x58EAF    Display VRAM (1200 bytes = 30 * 40 pixels)
+  0x58EB0              Input: Up button    (1 = pressed, 0 = released)
+  0x58EB1              Input: Down button  (1 = pressed, 0 = released)
+  0x58EB2              Input: Left button  (1 = pressed, 0 = released)
+  0x58EB3              Input: Right button (1 = pressed, 0 = released)
+  0x58EB4              VBlank / Frame Sync (Write any value to wait for next frame)
+  0x58FFF              Stack top (grows downward by 4 bytes per PUSH)
+
+CRITICAL MEMORY NOTES:
+- REGISTERS and ALU operations are fully 32-bit.
+- STORE writes ONLY the LOW 8 BITS (1 byte) of a register to memory.
+- LOAD reads ONLY 1 BYTE from memory (zero-extended to 32-bit register).
+- PUSH and POP operate on full 32-bit values (4 bytes).
+
+================================================================================
+DISPLAY
+================================================================================
+
+Resolution: 30 wide x 40 tall
+VRAM start: 0xF000
+Each byte is one pixel using an 8-bit color palette index (0-255).
+Pixel address formula: 0xF000 + (Y * 30) + X
+
+COLOR PALETTE (first 16 colors - most useful):
+  0  = Black           8  = Orange
+  1  = White           9  = Purple
+  2  = Red             10 = Dark Gray
+  3  = Green           11 = Light Gray
+  4  = Blue            12 = Dark Red
+  5  = Yellow          13 = Dark Green
+  6  = Cyan            14 = Dark Blue
+  7  = Magenta         15 = Dark Yellow
+
+Colors 16-231: 6x6x6 color cube (216 colors)
+Colors 232-255: Grayscale ramp (24 shades)
+
+================================================================================
+INPUT (D-PAD)
+================================================================================
+
+Four buttons: Up, Down, Left, Right
+Memory-mapped - just LOAD from the address to check:
+
+  LOAD D, [0xFFF0]   ; Read Up button (1=pressed, 0=not)
+  LOAD D, [0xFFF1]   ; Read Down button
+  LOAD D, [0xFFF2]   ; Read Left button
+  LOAD D, [0xFFF3]   ; Read Right button
+
+Programs should only READ these addresses. The emulator writes to them.
+Values are 1 while the button is held down, 0 when released.
+
+================================================================================
+VSYNC / FRAME TIMING
+================================================================================
+
+The emulator runs extremely fast (up to 50,000 instructions per frame).
+If you just loop and draw, your animation will run blindingly fast and you will
+see "tearing" (the screen will flicker and show half-drawn frames).
+
+To run at a smooth 60 FPS, end your main game loop by writing to 0xFFF4:
+
+    MOV D, 1
+    STORE [0xFFF4], D   ; CPU will pause here until the next screen refresh
+    JMP my_loop
+
+================================================================================
+INSTRUCTION SET
+================================================================================
+
+IMPORTANT NOTES:
+- STORE writes only the LOW 8 BITS (1 byte) of a register to memory
+- LOAD reads only 1 BYTE from memory (zero-extended to 16-bit register)
+- For signed arithmetic tricks, use direction FLAGS (0/1) not values (-1/+1)
+- Labels end with : on their own line
+- Comments start with ;
+- Numbers: decimal (42), hex (0x2A), binary (0b101010)
+- Registers are case-insensitive: A, a, B, b, etc.
+
+--- DATA MOVEMENT ---
+
+  MOV reg, value      Load immediate value into register
+                      MOV A, 0xF000
+                      MOV B, 42
+
+  MOV reg, reg        Copy one register to another
+                      MOV A, B
+
+  LOAD reg, [addr]    Load 1 byte from memory address into register
+                      LOAD A, [0xFFF0]
+
+  LOAD reg, [reg]     Load 1 byte from address stored in register
+                      LOAD A, [B]
+
+  STORE [addr], reg   Store low byte of register to memory address
+                      STORE [0xF000], A
+
+  STORE [reg], reg    Store low byte to address stored in first register
+                      STORE [A], B
+
+  PUSH reg            Push 16-bit register value onto stack
+                      PUSH A
+
+  POP reg             Pop 16-bit value from stack into register
+                      POP A
+
+--- ARITHMETIC ---
+
+  ADD reg, reg        Add second register to first:  reg1 = reg1 + reg2
+                      ADD A, B
+
+  ADD reg, value      Add immediate value:  reg = reg + value
+                      ADD A, 30
+
+  SUB reg, reg        Subtract:  reg1 = reg1 - reg2
+                      SUB A, B
+
+  SUB reg, value      Subtract immediate:  reg = reg - value
+                      SUB A, 1
+
+  MUL reg, reg        Multiply:  reg1 = reg1 * reg2
+                      MUL A, B
+
+  DIV reg, reg        Divide:  reg1 = reg1 / reg2    (HALTS on div by 0!)
+                      DIV A, B
+
+  MOD reg, reg        Modulo:  reg1 = reg1 % reg2    (HALTS on div by 0!)
+                      MOD A, B
+
+  INC reg             Increment register by 1
+                      INC A
+
+  DEC reg             Decrement register by 1
+                      DEC A
+
+--- BITWISE ---
+
+  AND reg, reg        Bitwise AND
+  OR  reg, reg        Bitwise OR
+  XOR reg, reg        Bitwise XOR
+  NOT reg             Bitwise NOT (flip all bits)
+  SHL reg, reg        Shift left by amount in second register
+  SHR reg, reg        Shift right by amount in second register
+
+--- COMPARISON & BRANCHING ---
+
+  CMP reg, reg        Compare two registers (sets Z and S flags)
+                      CMP A, B
+
+  CMP reg, value      Compare register with immediate value
+                      CMP A, 0
+
+  JMP label           Unconditional jump
+  JZ  label           Jump if Zero (last CMP was equal)
+  JNZ label           Jump if Not Zero (last CMP was not equal)
+  JG  label           Jump if Greater (unsigned: not zero AND not negative)
+  JL  label           Jump if Less (sign flag set)
+  JGE label           Jump if Greater or Equal (sign flag not set)
+  JLE label           Jump if Less or Equal (zero OR sign flag set)
+
+--- SUBROUTINES ---
+
+  CALL label          Call subroutine (pushes return address, jumps to label)
+  RET                 Return from subroutine (pops return address)
+
+--- OTHER ---
+
+  NOP                 No operation (does nothing, wastes 1 cycle)
+  HLT                 Halt the CPU (stops execution)
+
+================================================================================
+SYNTAX REFERENCE
+================================================================================
+
+; This is a comment
+; Labels go on their own line with a colon:
+
+my_label:
+    MOV A, 42         ; instruction with immediate value
+    MOV A, 0xFF       ; hex value
+    MOV A, 0b1010     ; binary value
+    LOAD A, [0xF000]  ; load from memory address
+    LOAD A, [B]       ; load from address in register B
+    STORE [A], B      ; store register B's low byte at address in A
+    STORE [0xF000], A ; store at literal address
+    JMP my_label      ; jump to label
+    CALL my_function  ; call subroutine
+    RET               ; return
+
+================================================================================
+COMMON PATTERNS
+================================================================================
+
+--- CALCULATE VRAM ADDRESS ---
+; Given B=X (0-29), C=Y (0-39), returns A = VRAM address
+; Clobbers nothing (saves/restores B and C)
+
+calc_vram:
+    MOV A, 0xF000
+    PUSH B
+    PUSH C
+vram_mul:
+    CMP C, 0
+    JZ vram_add
+    ADD A, 30
+    DEC C
+    JMP vram_mul
+vram_add:
+    ADD A, B
+    POP C
+    POP B
+    RET
+
+--- DRAW A SINGLE PIXEL ---
+; B=X, C=Y, D=color
+draw_pixel:
+    PUSH D
+    CALL calc_vram
+    POP D
+    STORE [A], D
+    RET
+
+--- CLEAR THE ENTIRE SCREEN ---
+; Fills display with black (color 0)
+clear_screen:
+    MOV A, 0xF000
+    MOV B, 1200
+    MOV D, 0
+cls_loop:
+    STORE [A], D
+    INC A
+    DEC B
+    CMP B, 0
+    JNZ cls_loop
+    RET
+
+--- FILL SCREEN WITH A COLOR ---
+; D = color to fill with
+fill_screen:
+    MOV A, 0xF000
+    MOV B, 1200
+fill_loop:
+    STORE [A], D
+    INC A
+    DEC B
+    CMP B, 0
+    JNZ fill_loop
+    RET
+
+--- READ D-PAD INPUT ---
+; Returns direction in D: 0=none, 1=up, 2=down, 3=left, 4=right
+read_input:
+    LOAD D, [0xFFF0]
+    CMP D, 0
+    JNZ ri_up
+    LOAD D, [0xFFF1]
+    CMP D, 0
+    JNZ ri_down
+    LOAD D, [0xFFF2]
+    CMP D, 0
+    JNZ ri_left
+    LOAD D, [0xFFF3]
+    CMP D, 0
+    JNZ ri_right
+    MOV D, 0
+    RET
+ri_up:
+    MOV D, 1
+    RET
+ri_down:
+    MOV D, 2
+    RET
+ri_left:
+    MOV D, 3
+    RET
+ri_right:
+    MOV D, 4
+    RET
+
+--- DRAW A HORIZONTAL LINE ---
+; B=startX, C=Y, D=color, [0x200]=length
+draw_hline:
+    PUSH B
+    PUSH D
+    LOAD A, [0x200]     ; length
+hl_loop:
+    CMP A, 0
+    JZ hl_done
+    POP D
+    PUSH D
+    PUSH A
+    CALL draw_pixel     ; B=X, C=Y, D=color
+    POP A
+    INC B
+    DEC A
+    JMP hl_loop
+hl_done:
+    POP D
+    POP B
+    RET
+
+================================================================================
+EXAMPLE: SNAKE-LIKE GAME
+================================================================================
+
+; A controllable pixel that leaves a trail
+
+    MOV B, 15           ; X = center
+    MOV C, 20           ; Y = center
+    MOV D, 3            ; Green color
+    STORE [0x200], D
+
+game_loop:
+    ; Draw current position
+    LOAD D, [0x200]
+    PUSH D
+    CALL calc_vram
+    POP D
+    STORE [A], D
+
+    ; Wait for next frame (VSync) to prevent tearing
+    MOV D, 1
+    STORE [0xFFF4], D
+
+    ; Read input and move
+    LOAD D, [0xFFF0]     ; Up?
+    CMP D, 0
+    JNZ move_up
+    LOAD D, [0xFFF1]     ; Down?
+    CMP D, 0
+    JNZ move_down
+    LOAD D, [0xFFF2]     ; Left?
+    CMP D, 0
+    JNZ move_left
+    LOAD D, [0xFFF3]     ; Right?
+    CMP D, 0
+    JNZ move_right
+    JMP game_loop
+
+move_up:
+    CMP C, 0
+    JLE game_loop
+    CALL erase_old
+    DEC C
+    JMP game_loop
+move_down:
+    CMP C, 39
+    JGE game_loop
+    CALL erase_old
+    INC C
+    JMP game_loop
+move_left:
+    CMP B, 0
+    JLE game_loop
+    CALL erase_old
+    DEC B
+    JMP game_loop
+move_right:
+    CMP B, 29
+    JGE game_loop
+    CALL erase_old
+    INC B
+    JMP game_loop
+
+erase_old:
+    PUSH D
+    CALL calc_vram
+    MOV D, 0
+    STORE [A], D
+    POP D
+    RET
+
+; Include the calc_vram subroutine from Common Patterns above
+
+calc_vram:
+    MOV A, 0xF000
+    PUSH B
+    PUSH C
+vm_loop:
+    CMP C, 0
+    JZ vm_add
+    ADD A, 30
+    DEC C
+    JMP vm_loop
+vm_add:
+    ADD A, B
+    POP C
+    POP B
+    RET
+
+================================================================================
+TIPS FOR AI CODE GENERATION
+================================================================================
+
+1. Programs start executing at address 0x0000.
+2. Use HLT to stop, or JMP back to a main loop for animations/games.
+3. STORE only writes 1 byte. Don't try to store negative numbers and reload
+   them - they won't survive the round-trip. Use flag bytes (0 or 1) instead.
+4. CALL/RET use the stack. Always balance PUSH/POP within functions.
+5. calc_vram (Y*30+X) is the most commonly needed subroutine - include it.
+6. The CPU executes 50,000 instructions per frame! YOU MUST USE VSYNC.
+   Write to [0xFFF4] at the end of your game loop to yield to the renderer.
+   If you don't use [0xFFF4], your screen will tear and animations will be too fast.
+7. For games, use a main loop that reads input, updates state, draws, and
+   syncs. No need for complex timing loops.
+8. Register A is often used for addresses (VRAM pointer). B and C are great
+   for X,Y coordinates. D is good for temporary values and colors.
+9. Always check boundaries before moving (CMP B, 29 / JGE skip for X max).
+10. Comments with ; make code much more readable.
+11. CRITICAL SYNTAX RULE: Labels MUST go on their very own line. Do NOT put an instruction on the same line as a label. 
+    BAD:  my_loop: MOV A, B
+    GOOD: my_loop:
+          MOV A, B
+13. CRITICAL REGISTER RULE: You ONLY have four registers: A, B, C, and D. DO NOT invent registers like G, H, or X. DO NOT try to write to SP or IP directly. If you run out of registers, you MUST use STORE to save them in RAM (e.g., [0x300]) and LOAD them later.
