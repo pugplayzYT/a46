@@ -1,0 +1,23 @@
+# Build artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.aps
+*.res
+*.pch
+*.lib
+*.exp
+*.map
+*.log
+
+# Windows specific
+thumbs.db
+desktop.ini
+
+# Common Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
