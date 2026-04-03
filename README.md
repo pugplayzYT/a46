@@ -1,5 +1,10 @@
 # 🚀 A46 Computer Emulator - 32-Bit V2 Edition
 
+![GitHub repo size](https://img.shields.io/github/repo-size/pugplayzYT/a46?style=for-the-badge&logo=git&color=orange)
+![GitHub language count](https://img.shields.io/github/languages/count/pugplayzYT/a46?style=for-the-badge&logo=github&color=blue)
+![GitHub top language](https://img.shields.io/github/languages/top/pugplayzYT/a46?style=for-the-badge&logo=c%2B%2B&color=blue)
+![GitHub last commit](https://img.shields.io/github/last-commit/pugplayzYT/a46?style=for-the-badge&logo=git&color=green)
+
 ![A46 Emulator Logo](logo.png)
 
 Welcome to the **A46 Computer Emulator**, a custom high-performance 32-bit architecture designed for retro enthusiasts, assembly lovers, and educational exploration. 
